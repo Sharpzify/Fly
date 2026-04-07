@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Bit Planes Ultra Lite Final</title>
+  <title>Bit Planes Ultra Lite v2</title>
   <style>
     body { margin:0; overflow:hidden; background:#0b1a2a; }
     canvas { display:block; margin:auto; background:#111; }
@@ -24,22 +24,19 @@ function createPlayer(x,y,color){
     dirX:1, dirY:0,
     baseColor:color,
     hp:100,
-
     bullets:25,
     missiles:2,
     maxBullets:25,
     maxMissiles:2,
-
     lastBulletRegen:0,
     lastMissileRegen:0,
     lastShot:0,
-    lastMissileShot:0,
-
     parry:false,
     parryTimer:0,
     parryCooldown:0,
     parrySuccess:false,
     slowTimer:0
+    lastMissileShot: 0,
   };
 }
 
@@ -72,7 +69,7 @@ function shoot(p){
     x:p.x,y:p.y,
     dx:p.dirX*5,
     dy:p.dirY*5,
-    life:480, // ~8 seconds
+    life:480,
     owner:p
   });
 }
@@ -81,7 +78,7 @@ function fireMissile(p,color){
   const now = Date.now();
 
   if(p.missiles<=0) return;
-  if(now - p.lastMissileShot < 1000) return; // cooldown
+  if(now - p.lastMissileShot < 1000) return; // 🧠 cooldown (1 sec)
 
   p.lastMissileShot = now;
   p.missiles--;
@@ -205,12 +202,12 @@ function update(){
     m.life++;
     const target = m.owner===p1?p2:p1;
 
-    if(m.life<300){ // ~5 seconds tracking
+    if(m.life<300){
       const dx=target.x-m.x;
       const dy=target.y-m.y;
       const len=Math.hypot(dx,dy);
-      m.dx += (dx/len)*0.15;
-      m.dy += (dy/len)*0.15;
+      m.dx += (dx/len)*0.17;
+      m.dy += (dy/len)*0.17;
     } else {
       m.dy+=0.15;
     }
@@ -226,12 +223,13 @@ function update(){
     });
   });
 
+  // win condition
   if(p1.hp<=0 || p2.hp<=0){
     gameOver=true;
   }
 
-  bullets = bullets.filter(b=>b.life>0);
-  missiles = missiles.filter(m=>m.life<600);
+  bullets.filter(b=>b.life>0);
+  missiles.filter(m=>m.life<600);
 }
 
 function drawBars(x,y,count,max,color){
@@ -277,12 +275,14 @@ function draw(){
     ctx.fill();
   });
 
+  // UI
   drawBars(20,20,p1.bullets,p1.maxBullets,"cyan");
   drawMissiles(20,40,p1.missiles);
 
   drawBars(780,20,p2.bullets,p2.maxBullets,"orange");
   drawMissiles(780,40,p2.missiles);
 
+  // win text
   if(gameOver){
     ctx.fillStyle="white";
     ctx.font="40px Arial";
