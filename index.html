@@ -1,19 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Bit Planes Lite+</title>
+  <title>Bit Planes Ultra Lite</title>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: linear-gradient(#1e3c72, #2a5298);
-    }
-    canvas {
-      display: block;
-      margin: auto;
-      background: #0a0a0a;
-      border: 2px solid white;
-    }
+    body { margin:0; overflow:hidden; background:#0b1a2a; }
+    canvas { display:block; margin:auto; background:#111; }
   </style>
 </head>
 <body>
@@ -23,161 +14,250 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-canvas.width = 900;
-canvas.height = 500;
+canvas.width = 1000;
+canvas.height = 600;
 
-// Players
-function createPlayer(x, y, color) {
+function createPlayer(x,y,color){
   return {
-    x, y,
-    color,
-    hp: 100,
-    dirX: 1,
-    dirY: 0,
-    lastShot: 0,
-    parry: false,
-    parryTimer: 0
+    x,y,
+    vx:0, vy:0,
+    dirX:1, dirY:0,
+    baseColor:color,
+    hp:100,
+    bullets:25,
+    missiles:2,
+    lastShot:0,
+    parry:false,
+    parryTimer:0,
+    parryCooldown:0,
+    parrySuccess:false,
+    slowTimer:0
   };
 }
 
-const p1 = createPlayer(100, 250, "cyan");
-const p2 = createPlayer(800, 250, "orange");
+const p1 = createPlayer(200,300,"cyan");
+const p2 = createPlayer(800,300,"orange");
 
-const bullets = [];
-const keys = {};
+const bullets=[];
+const missiles=[];
+const keys={};
 
-document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+document.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
-function shoot(player, speed) {
-  const now = Date.now();
-  if (now - player.lastShot < 180) return; // 🔥 slightly slower fire rate
+// 🎨 health color darkening
+function getColor(p){
+  const factor = p.hp/100;
+  if(p.baseColor==="cyan") return `rgb(0,${200*factor},${255*factor})`;
+  return `rgb(${255*factor},${140*factor},0)`;
+}
 
-  player.lastShot = now;
+// 🔫 shoot
+function shoot(p){
+  if(p.bullets<=0) return;
+  const now=Date.now();
+  if(now-p.lastShot<200) return;
+
+  p.lastShot=now;
+  p.bullets--;
 
   bullets.push({
-    x: player.x,
-    y: player.y,
-    dx: player.dirX * speed,
-    dy: player.dirY * speed,
-    owner: player
+    x:p.x,y:p.y,
+    dx:p.dirX*6,
+    dy:p.dirY*6,
+    life:600,
+    owner:p
   });
 }
 
-function updatePlayer(p, controls) {
-  let dx = 0, dy = 0;
+// 🚀 missile
+function fireMissile(p,color){
+  if(p.missiles<=0) return;
+  p.missiles--;
 
-  if (keys[controls.up]) dy -= 1;
-  if (keys[controls.down]) dy += 1;
-  if (keys[controls.left]) dx -= 1;
-  if (keys[controls.right]) dx += 1;
+  missiles.push({
+    x:p.x,y:p.y,
+    dx:p.dirX*3,
+    dy:p.dirY*3,
+    owner:p,
+    life:0,
+    color:color
+  });
+}
 
-  // Normalize direction
-  if (dx !== 0 || dy !== 0) {
-    const len = Math.hypot(dx, dy);
-    p.dirX = dx / len;
-    p.dirY = dy / len;
+// ✈️ movement physics
+function movePlayer(p,ctrl){
+  let ax=0, ay=0;
+
+  if(keys[ctrl.up]) ay-=0.4;
+  if(keys[ctrl.down]) ay+=0.4;
+  if(keys[ctrl.left]) ax-=0.4;
+  if(keys[ctrl.right]) ax+=0.4;
+
+  // slowdown penalty
+  const speedMult = p.slowTimer>0 ? 0.5 : 1;
+
+  p.vx += ax*speedMult;
+  p.vy += ay*speedMult;
+
+  p.vx *= 0.98;
+  p.vy *= 0.98;
+
+  p.x += p.vx;
+  p.y += p.vy;
+
+  // update direction
+  if(Math.hypot(p.vx,p.vy)>0.1){
+    const len=Math.hypot(p.vx,p.vy);
+    p.dirX=p.vx/len;
+    p.dirY=p.vy/len;
   }
 
-  p.x += dx * 4;
-  p.y += dy * 4;
+  // walls
+  if(p.x<5||p.x>canvas.width-5) p.vx*=-0.5;
+  if(p.y<5||p.y>canvas.height-5) p.vy*=-0.5;
 
-  // 🧱 Keep inside map
-  p.x = Math.max(10, Math.min(canvas.width - 10, p.x));
-  p.y = Math.max(10, Math.min(canvas.height - 10, p.y));
+  p.x=Math.max(5,Math.min(canvas.width-5,p.x));
+  p.y=Math.max(5,Math.min(canvas.height-5,p.y));
 
-  // Shoot
-  if (keys[controls.shoot]) shoot(p, 6);
-  if (keys[controls.strong]) shoot(p, 10);
+  // shooting
+  if(keys[ctrl.shoot]) shoot(p);
+  if(keys[ctrl.missile]) fireMissile(p,"red");
+  if(keys[ctrl.strong]) fireMissile(p,"blue");
 
-  // 🛡️ Parry
-  if (keys[controls.parry] && p.parryTimer <= 0) {
-    p.parry = true;
-    p.parryTimer = 20;
+  // parry
+  if(keys[ctrl.parry] && p.parryCooldown<=0){
+    p.parry=true;
+    p.parryTimer=45; // 0.75s
+    p.parryCooldown=180; // 3s
+    p.parrySuccess=false;
   }
 
-  if (p.parryTimer > 0) {
+  if(p.parryTimer>0){
     p.parryTimer--;
+    if(p.parryTimer===0 && !p.parrySuccess){
+      p.slowTimer=120; // slowdown penalty
+    }
   } else {
-    p.parry = false;
+    p.parry=false;
   }
+
+  if(p.parryCooldown>0) p.parryCooldown--;
+  if(p.slowTimer>0) p.slowTimer--;
 }
 
-function update() {
-  updatePlayer(p1, {
-    up: "w", down: "s", left: "a", right: "d",
-    shoot: "v", strong: "b", parry: "c"
+function update(){
+  movePlayer(p1,{
+    up:"w",down:"s",left:"a",right:"d",
+    shoot:"v", missile:"v", strong:"b", parry:"c"
   });
 
-  updatePlayer(p2, {
-    up: "arrowup", down: "arrowdown",
-    left: "arrowleft", right: "arrowright",
-    shoot: ",", strong: ".", parry: "/"
+  movePlayer(p2,{
+    up:"arrowup",down:"arrowdown",
+    left:"arrowleft",right:"arrowright",
+    shoot:",", missile:",", strong:".", parry:"/"
   });
 
-  bullets.forEach(b => {
-    b.x += b.dx;
-    b.y += b.dy;
+  // bullets
+  bullets.forEach(b=>{
+    b.x+=b.dx;
+    b.y+=b.dy;
+    b.life--;
 
-    [p1, p2].forEach(p => {
-      if (b.owner !== p && Math.hypot(b.x - p.x, b.y - p.y) < 12) {
-        
-        if (p.parry) {
-          // 🔄 Reflect bullet
-          b.dx *= -1;
-          b.dy *= -1;
-          b.owner = p;
+    if(b.x<0||b.x>canvas.width) b.dx*=-1;
+    if(b.y<0||b.y>canvas.height) b.dy*=-1;
+
+    [p1,p2].forEach(p=>{
+      if(p!==b.owner && Math.hypot(b.x-p.x,b.y-p.y)<8){
+        if(p.parry){
+          b.dx*=-1; b.dy*=-1;
+          b.owner=p;
+          p.parrySuccess=true;
         } else {
-          p.hp -= 1;
+          p.hp-=4;
         }
       }
     });
   });
 
-  // Remove off-screen bullets
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    if (
-      bullets[i].x < 0 || bullets[i].x > canvas.width ||
-      bullets[i].y < 0 || bullets[i].y > canvas.height
-    ) {
-      bullets.splice(i, 1);
+  // missiles
+  missiles.forEach(m=>{
+    m.life++;
+
+    const target = m.owner===p1?p2:p1;
+
+    if(m.life<120){
+      // follow target
+      const dx=target.x-m.x;
+      const dy=target.y-m.y;
+      const len=Math.hypot(dx,dy);
+      m.dx += (dx/len)*0.2;
+      m.dy += (dy/len)*0.2;
+    } else {
+      // fall
+      m.dy+=0.2;
     }
+
+    m.x+=m.dx;
+    m.y+=m.dy;
+
+    [p1,p2].forEach(p=>{
+      if(p!==m.owner && Math.hypot(m.x-p.x,m.y-p.y)<10){
+        p.hp-=20;
+        m.life=9999;
+      }
+    });
+  });
+
+  // cleanup
+  for(let i=bullets.length-1;i>=0;i--){
+    if(bullets[i].life<=0) bullets.splice(i,1);
+  }
+  for(let i=missiles.length-1;i>=0;i--){
+    if(missiles[i].life>600) missiles.splice(i,1);
   }
 }
 
-function drawPlayer(p) {
-  ctx.fillStyle = p.parry ? "white" : p.color;
+function drawPlayer(p){
+  ctx.fillStyle = p.parry ? "white" : getColor(p);
 
   ctx.beginPath();
-  ctx.moveTo(p.x + p.dirX * 15, p.y + p.dirY * 15);
-  ctx.lineTo(p.x - p.dirY * 10, p.y + p.dirX * 10);
-  ctx.lineTo(p.x + p.dirY * 10, p.y - p.dirX * 10);
+  ctx.moveTo(p.x+p.dirX*10,p.y+p.dirY*10);
+  ctx.lineTo(p.x-p.dirY*6,p.y+p.dirX*6);
+  ctx.lineTo(p.x+p.dirY*6,p.y-p.dirX*6);
   ctx.closePath();
   ctx.fill();
 }
 
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
   drawPlayer(p1);
   drawPlayer(p2);
 
-  ctx.fillStyle = "white";
-  bullets.forEach(b => {
-    ctx.fillRect(b.x, b.y, 4, 4);
+  ctx.fillStyle="white";
+  bullets.forEach(b=>ctx.fillRect(b.x,b.y,3,3));
+
+  missiles.forEach(m=>{
+    ctx.fillStyle = m.color==="red"
+      ? `rgb(${255},${50+m.life},${50})`
+      : `rgb(${50},${150+m.life},255)`;
+
+    ctx.beginPath();
+    ctx.arc(m.x,m.y,4,0,Math.PI*2);
+    ctx.fill();
   });
 
-  ctx.fillText("P1 HP: " + p1.hp, 20, 20);
-  ctx.fillText("P2 HP: " + p2.hp, 750, 20);
+  ctx.fillText(`P1 HP:${p1.hp} B:${p1.bullets} M:${p1.missiles}`,20,20);
+  ctx.fillText(`P2 HP:${p2.hp} B:${p2.bullets} M:${p2.missiles}`,750,20);
 }
 
-function gameLoop() {
+function loop(){
   update();
   draw();
-  requestAnimationFrame(gameLoop);
+  requestAnimationFrame(loop);
 }
-
-gameLoop();
+loop();
 </script>
 </body>
 </html>
