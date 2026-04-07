@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Bit Planes Lite+</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: linear-gradient(#1e3c72, #2a5298);
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background: #0a0a0a;
+      border: 2px solid white;
+    }
+  </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = 900;
+canvas.height = 500;
+
+// Players
+function createPlayer(x, y, color) {
+  return {
+    x, y,
+    color,
+    hp: 100,
+    dirX: 1,
+    dirY: 0,
+    lastShot: 0,
+    parry: false,
+    parryTimer: 0
+  };
+}
+
+const p1 = createPlayer(100, 250, "cyan");
+const p2 = createPlayer(800, 250, "orange");
+
+const bullets = [];
+const keys = {};
+
+document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+function shoot(player, speed) {
+  const now = Date.now();
+  if (now - player.lastShot < 180) return; // 🔥 slightly slower fire rate
+
+  player.lastShot = now;
+
+  bullets.push({
+    x: player.x,
+    y: player.y,
+    dx: player.dirX * speed,
+    dy: player.dirY * speed,
+    owner: player
+  });
+}
+
+function updatePlayer(p, controls) {
+  let dx = 0, dy = 0;
+
+  if (keys[controls.up]) dy -= 1;
+  if (keys[controls.down]) dy += 1;
+  if (keys[controls.left]) dx -= 1;
+  if (keys[controls.right]) dx += 1;
+
+  // Normalize direction
+  if (dx !== 0 || dy !== 0) {
+    const len = Math.hypot(dx, dy);
+    p.dirX = dx / len;
+    p.dirY = dy / len;
+  }
+
+  p.x += dx * 4;
+  p.y += dy * 4;
+
+  // 🧱 Keep inside map
+  p.x = Math.max(10, Math.min(canvas.width - 10, p.x));
+  p.y = Math.max(10, Math.min(canvas.height - 10, p.y));
+
+  // Shoot
+  if (keys[controls.shoot]) shoot(p, 6);
+  if (keys[controls.strong]) shoot(p, 10);
+
+  // 🛡️ Parry
+  if (keys[controls.parry] && p.parryTimer <= 0) {
+    p.parry = true;
+    p.parryTimer = 20;
+  }
+
+  if (p.parryTimer > 0) {
+    p.parryTimer--;
+  } else {
+    p.parry = false;
+  }
+}
+
+function update() {
+  updatePlayer(p1, {
+    up: "w", down: "s", left: "a", right: "d",
+    shoot: "v", strong: "b", parry: "c"
+  });
+
+  updatePlayer(p2, {
+    up: "arrowup", down: "arrowdown",
+    left: "arrowleft", right: "arrowright",
+    shoot: ",", strong: ".", parry: "/"
+  });
+
+  bullets.forEach(b => {
+    b.x += b.dx;
+    b.y += b.dy;
+
+    [p1, p2].forEach(p => {
+      if (b.owner !== p && Math.hypot(b.x - p.x, b.y - p.y) < 12) {
+        
+        if (p.parry) {
+          // 🔄 Reflect bullet
+          b.dx *= -1;
+          b.dy *= -1;
+          b.owner = p;
+        } else {
+          p.hp -= 1;
+        }
+      }
+    });
+  });
+
+  // Remove off-screen bullets
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    if (
+      bullets[i].x < 0 || bullets[i].x > canvas.width ||
+      bullets[i].y < 0 || bullets[i].y > canvas.height
+    ) {
+      bullets.splice(i, 1);
+    }
+  }
+}
+
+function drawPlayer(p) {
+  ctx.fillStyle = p.parry ? "white" : p.color;
+
+  ctx.beginPath();
+  ctx.moveTo(p.x + p.dirX * 15, p.y + p.dirY * 15);
+  ctx.lineTo(p.x - p.dirY * 10, p.y + p.dirX * 10);
+  ctx.lineTo(p.x + p.dirY * 10, p.y - p.dirX * 10);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawPlayer(p1);
+  drawPlayer(p2);
+
+  ctx.fillStyle = "white";
+  bullets.forEach(b => {
+    ctx.fillRect(b.x, b.y, 4, 4);
+  });
+
+  ctx.fillText("P1 HP: " + p1.hp, 20, 20);
+  ctx.fillText("P2 HP: " + p2.hp, 750, 20);
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
